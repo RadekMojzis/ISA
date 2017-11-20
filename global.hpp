@@ -1,7 +1,37 @@
 /**
- * @file   : isamon.hpp
- * @date   : 2017-09-25
- * @author : Martin Pumr
+ * This file is part of 'isamon'
+ *
+ * Copyright (c) 2017, Martin Pumr
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *      * Redistributions of source code must retain the above copyright
+ *        notice, this list of conditions and the following disclaimer.
+ *      * Redistributions in binary form must reproduce the above copyright
+ *        notice, this list of conditions and the following disclaimer in the
+ *        documentation and/or other materials provided with the distribution.
+ *      * Neither the name of the <organization> nor the
+ *        names of its contributors may be used to endorse or promote products
+ *        derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL MARTIN PUMR BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+**/
+/**
+ * @file    : global.hpp
+ * @author  : Martin Pumr
+ * @date    : 2017-09-24
+ *
+ * @brief   Global definitions header file
  */
 
 #ifndef GLOBAL_HPP_
@@ -22,6 +52,7 @@ enum RCODES {
 
 #include <iostream>
 
+/// Error macro
 #define terror std::cerr << CLR_BOLD << __FILE__ << ":" << __LINE__ << ": " << CLR_RED << "[ ERROR ] " << CLR_RST << CLR_BOLD << strerror(errno) << "(" << errno << "): " << CLR_RST
 
 #ifdef NDEBUG
@@ -30,17 +61,18 @@ enum RCODES {
 
 #else
 
-// debug pro hlavni proces
+/// Debug macro
 #define debug std::cerr << CLR_GREEN << __FILE__ << CLR_RST << ":" << __LINE__ << ": " << CLR_YELLOW << "[ DEBUG ] " << CLR_RST
 
 #endif
-
 
 #include <cstdint>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include <errno.h>
+#include <string.h>
 
 /// Struktura pro IPv4 zaznam
 struct ip4_t {
@@ -54,16 +86,16 @@ struct mac_t {
 
 /// Zaznam o informaci o karte
 struct iface_t {
-	char name[MAX_IFACE_NAME_BYTES+1];		///< jmeno karty + '\0'
-    mac_t mac;          ///< HW adresa karty
+    /// Jmeno karty + '\0'
+	char name[MAX_IFACE_NAME_BYTES+1];
+    /// HW adresa karty
+    mac_t mac;
+    /// Adresa sitove karty
     struct in_addr nicInAddr;
+    /// Maska site ke ktere je karta pripojena
     struct in_addr nicMaskInAddr;
+    /// Adresa site ke ketere je karta pripojena
     struct in_addr nicNetInAddr;
-
-    /// OBSOLATE
-    ip4_t ipAddr;		///< Adresa sitove karty
-	ip4_t netAddr;		///< Adresa site ke ketere je karta pripojena
-    ip4_t mask;			///< maska site ke ktere je karta pripojena
 };
 
 /// Vlajky pro nastaveni
@@ -79,11 +111,11 @@ struct flag_t {
 
 // jednolive hodnoty nastaveni
 struct value_t {
-    uint32_t port;
-    uint8_t net[4];
-    uint8_t mask;
-    char * iface;
-    uint32_t rtt;
+    uint32_t port;      ///< -p
+    ip4_t net;          ///< -n
+    ip4_t mask;         ///< -n
+    char * iface;       ///< -i
+    uint32_t rtt;       ///< -w
     struct timeval rttTmval;
 };
 
@@ -93,21 +125,26 @@ struct opt_t {
     value_t val;
 };
 
-
-void showHelp( void );
-opt_t parseArgs( int argc, const char ** argv );
-
-
 // Pretizeni pro lepsi vypisy ...
 std::ostream& operator<<(std::ostream&, const uint8_t);     	// uint8_t
 std::ostream& operator<<(std::ostream&, const ip4_t ip);    	// IPv4
 std::ostream& operator<<(std::ostream&, const mac_t mac);   	// MAC
 std::ostream& operator<<(std::ostream&, const iface_t iface);   // MAC
 std::ostream& operator<<(std::ostream&, const struct in_addr inaddr);   // IPv4
+bool operator<(const ip4_t& a, const ip4_t& b);
+bool operator>(const ip4_t& a, const ip4_t& b);
+bool operator<=(const ip4_t& a, const ip4_t& b);
+bool operator>=(const ip4_t& a, const ip4_t& b);
 bool operator==(const ip4_t& a, const ip4_t& b);
 bool operator!=(const ip4_t& a, const ip4_t& b);
 
-ip4_t InAddrToIP4( const struct in_addr addr );
+ip4_t operator&(const ip4_t &lhs, const ip4_t &rhs); // Bitwise and
+ip4_t operator~(const ip4_t &rhs); // Bitwise complement
+ip4_t operator^(const ip4_t &lhs, const ip4_t &rhs); // Bitwise exclusive or
+ip4_t operator|(const ip4_t &lhs, const ip4_t &rhs); // Bitwise or
 
+ip4_t InAddrToIP4( const struct in_addr addr );
+bool bindSockToIface( int * sock, const char * name );
+struct in_addr IP4ToInAddr( const ip4_t ip );
 
 #endif /* GLOBAL_HPP_ */

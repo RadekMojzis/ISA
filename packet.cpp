@@ -1,4 +1,38 @@
-
+/**
+ * This file is part of 'isamon'
+ *
+ * Copyright (c) 2017, Martin Pumr
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *      * Redistributions of source code must retain the above copyright
+ *        notice, this list of conditions and the following disclaimer.
+ *      * Redistributions in binary form must reproduce the above copyright
+ *        notice, this list of conditions and the following disclaimer in the
+ *        documentation and/or other materials provided with the distribution.
+ *      * Neither the name of the <organization> nor the
+ *        names of its contributors may be used to endorse or promote products
+ *        derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL MARTIN PUMR BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+**/
+/**
+ * @file    : main.cpp
+ * @author  : Martin Pumr
+ * @date    : 2017-09-24
+ *
+ * @brief   Packet object file for isamon
+ */
 
 #include "string.h"
 
@@ -9,6 +43,7 @@
 #include "sys/socket.h"
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>    // struct icmp, ICMP_ECHO
+#include <netinet/tcp.h>
 #include <netinet/udp.h>
 #include <linux/if_ether.h>     // ETH_P_ARP = 0x0806
 #include <sys/types.h>
@@ -26,38 +61,82 @@
 #include "packet.hpp"
 #include "global.hpp"
 
-// Prevzato z prednasek ISA 2017
-// Computing the internet checksum (RFC 1071).
-// Note that the internet checksum does not preclude collisions.
-uint16_t checksum(uint16_t *addr, int len)
+// ------------------------------------------------------------------
+// 				>>> Prevzato >>>
+// SRC : www.cs.utah.edu/~swalton/listings/sockets/programs/part4/chap18/ping.c
+// ------------------------------------------------------------------
+/*
+ * Copyright (c) 1989 The Regents of the University of California.
+ * All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * Mike Muuss.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+/*
+ * in_cksum --
+ *	Checksum routine for Internet Protocol family headers (C Version)
+ */
+static int
+in_cksum(u_short *addr, int len)
 {
-	int count = len;
-	register uint32_t sum = 0;
-	uint16_t answer = 0;
+	register int nleft = len;
+	register u_short *w = addr;
+	register int sum = 0;
+	u_short answer = 0;
 
-	// Sum up 2-byte values until none or only one byte left.
-	while (count > 1) {
-		sum += *(addr++);
-		count -= 2;
+	/*
+	 * Our algorithm is simple, using a 32 bit accumulator (sum), we add
+	 * sequential 16 bit words to it, and at the end, fold back all the
+	 * carry bits from the top 16 bits into the lower 16 bits.
+	 */
+	while (nleft > 1)  {
+		sum += *w++;
+		nleft -= 2;
 	}
 
-	// Add left-over byte, if any.
-	if (count > 0) {
-		sum += *(uint8_t *) addr;
+	/* mop up an odd byte, if necessary */
+	if (nleft == 1) {
+		*(u_char *)(&answer) = *(u_char *)w ;
+		sum += answer;
 	}
 
-	// Fold 32-bit sum into 16 bits; we lose information by doing this,
-	// increasing the chances of a collision.
-	// sum = (lower 16 bits) + (upper 16 bits shifted right 16 bits)
-	while (sum >> 16) {
-		sum = (sum & 0xffff) + (sum >> 16);
-	}
-
-	// Checksum is one's compliment of sum.
-	answer = ~sum;
-
-	return (answer);
+	/* add back carry outs from top 16 bits to low 16 bits */
+	sum = (sum >> 16) + (sum & 0xffff);	/* add hi 16 to low 16 */
+	sum += (sum >> 16);			/* add carry */
+	answer = ~sum;				/* truncate to 16 bits */
+	return(answer);
 }
+// ------------------------------------------------------------------
+// 				<<< Prevzato <<<
+// ------------------------------------------------------------------
 
 bool Packet::forgeIcmpEcho( void )
 {
@@ -72,10 +151,10 @@ bool Packet::forgeIcmpEcho( void )
 	memcpy(packet.data + sizeof(struct icmphdr), "ECHO", strlen("ECHO"));
 	icmp->type = ICMP_ECHO;
 	icmp->code = 0;
-	icmp->un.echo.id = htons( 1111 );
+	icmp->un.echo.id = htons( 8888 );
 	icmp->un.echo.sequence = htons( 0 );
 	icmp->checksum = 0;
-	icmp->checksum = checksum((uint16_t *)this->packet.data, ICMP_HDRLEN + ICMP_DATA);
+	icmp->checksum = in_cksum((uint16_t *)this->packet.data, ICMP_HDRLEN + ICMP_DATA);
 
 	return false;
 }
@@ -104,11 +183,13 @@ bool Packet::forgeArp( const iface_t iface, const ip4_t dstIP )
 	arphdr->plen   = IPV4_BYTES;				// 4
 	arphdr->opcode = htons( ARPOP_REQUEST );
 
-	char ip[20] = { 0 };
-
 	memcpy( arphdr->sender_mac, &iface.mac, HW_ADDR_BYTES );
-	sprintf(ip, "%d.%d.%d.%d", iface.ipAddr.oct[0], iface.ipAddr.oct[1], iface.ipAddr.oct[2], iface.ipAddr.oct[3]);
-	//debug << "ARP sender_ip=" << ip << std::endl;
+
+
+	char ip[20] = { 0 };
+	ip4_t senderIP = InAddrToIP4(iface.nicInAddr);
+	sprintf(ip, "%d.%d.%d.%d", senderIP.oct[0], senderIP.oct[1], senderIP.oct[2], senderIP.oct[3]);
+	//debug << "ARP sender_ip=" << ip << " X " << senderIP << "\n";
 	if ( inet_pton(AF_INET, ip, arphdr->sender_ip) != 1 ) {
 		terror << "Packet forging\n";
 		return true;
@@ -117,7 +198,7 @@ bool Packet::forgeArp( const iface_t iface, const ip4_t dstIP )
 	memset( arphdr->target_mac, 0x00, HW_ADDR_BYTES );
 
 	sprintf(ip, "%d.%d.%d.%d", dstIP.oct[0], dstIP.oct[1], dstIP.oct[2], dstIP.oct[3]);
-	//debug << "ARP target_ip=" << ip << std::endl;
+	//debug << "ARP target_ip=" << ip << "\b";
 	if ( inet_pton(AF_INET, ip, arphdr->target_ip) != 1 ) {
 		terror << "Packet forging " << strerror(errno) << "\n";
 		return true;
@@ -126,17 +207,105 @@ bool Packet::forgeArp( const iface_t iface, const ip4_t dstIP )
 	return false;
 }
 
-bool Packet::GetTimestamp( const int sock )
+static bool forgeIpHdr( struct iphdr * ip, const struct in_addr saddr, const struct in_addr daddr )
 {
-	errno = 0;
+	ip->ihl = 5;
+	ip->version = 4;
+	ip->tos = 0;
+	ip->tot_len = sizeof(struct iphdr) + sizeof(struct tcphdr);
+	ip->id = htons(8888);
+	ip->frag_off = htons(16384);
+	ip->ttl = 64;
+	ip->protocol = IPPROTO_TCP;
+	ip->check = 0;
+	ip->saddr = saddr.s_addr;
+	ip->daddr = daddr.s_addr;
+	ip->check = in_cksum((unsigned short *)ip, ip->tot_len >> 1);
 
-	// Kdy byl paket prijat
-	gettimeofday(&this->tmstamp.tv_tod, 0);
+	return false;
+}
 
-	// Kdy byl paket zaznamenan kernelem
-	if (ioctl(sock, SIOCGSTAMP, &this->tmstamp.tv_ioctl)) {
-		return true;
-	}
+static bool forgePshHdr( struct pseudo_header * psh, const struct tcphdr * tcp, const struct in_addr saddr, const struct in_addr daddr )
+{
+	psh->saddr = saddr.s_addr;
+	psh->daddr = daddr.s_addr;
+	psh->placeholder = 0;
+	psh->proto = IPPROTO_TCP;
+	psh->tcplen = htons(sizeof(struct tcphdr));
+
+	memcpy(&(psh->tcp), tcp, sizeof(struct tcphdr));
+
+	return false;
+}
+
+bool Packet::forgeTcpSyn( const struct in_addr saddr, const struct in_addr daddr, const uint32_t port )
+{
+	struct iphdr * ip = (struct iphdr *)this->packet.data;
+	struct tcphdr * tcp = (struct tcphdr *)(this->packet.data + sizeof(struct iphdr));
+
+	this->packet.len = sizeof(struct iphdr) + sizeof(struct tcphdr);
+
+	// ~~~ IP hlavicka
+	forgeIpHdr(ip, saddr, daddr);
+
+	//TCP Header
+	tcp->source = htons( 8888 );
+	tcp->dest = htons( port );
+	tcp->seq = htonl(33333333);
+	tcp->ack_seq = 0;
+	tcp->doff = sizeof(struct tcphdr) / 4;
+	tcp->fin = 0;
+	tcp->syn = 1;
+	tcp->rst = 0;
+	tcp->psh = 0;
+	tcp->ack = 0;
+	tcp->urg = 0;
+	tcp->window = htons(14600);  // maximum allowed window size
+	tcp->check = 0;
+	tcp->urg_ptr = 0;
+
+	struct pseudo_header psh;
+
+	// Vyplneni pseudo hlavicky (nutne pro spocitani kontrolniho souctu)
+	forgePshHdr( &psh, tcp, saddr, daddr );
+
+	tcp->check = in_cksum((unsigned short*)&psh , sizeof(struct pseudo_header));
+
+	return false;
+}
+
+bool Packet::forgeTcpRst( const struct in_addr saddr, const struct in_addr daddr, const uint32_t port )
+{
+	struct iphdr * ip = (struct iphdr *)this->packet.data;
+	struct tcphdr * tcp = (struct tcphdr *)(this->packet.data + sizeof(struct iphdr));
+
+	this->packet.len = sizeof(struct iphdr) + sizeof(struct tcphdr);
+
+	// ~~~ IP hlavicka
+	forgeIpHdr(ip, saddr, daddr);
+
+	//TCP Header
+	tcp->source = htons( 8888 );
+	tcp->dest = htons( port );
+	tcp->seq = htonl(33333334);
+	tcp->ack_seq = 0;
+	tcp->doff = sizeof(struct tcphdr) / 4;
+	tcp->fin = 0;
+	tcp->syn = 0;
+	tcp->rst = 1;
+	tcp->psh = 0;
+	tcp->ack = 0;
+	tcp->urg = 0;
+	tcp->window = htons(14600);  // maximum allowed window size
+	tcp->check = 0;
+	tcp->urg_ptr = 0;
+
+	struct pseudo_header psh;
+
+	// Vyplneni pseudo hlavicky (nutne pro spocitani kontrolniho souctu)
+	forgePshHdr( &psh, tcp, saddr, daddr );
+
+	tcp->check = in_cksum((unsigned short*)&psh , sizeof(struct pseudo_header));
 
 	return false;
 }
@@ -146,14 +315,14 @@ void Packet::zero( void )
 	memset(&(this->packet), 0, sizeof(struct packet_t));
 }
 
-void Packet::dump( const packet_t * pckt, unsigned offset, unsigned maxBytes )
+void Packet::dump( unsigned offset, unsigned maxBytes )
 {
 	#ifndef DEBUG
 	using namespace std;
 	cerr << "-------------------------------------------------\n";
 	cerr << " off |  2    4    6    8    10   12   14   16\n";
 	cerr << "-------------------------------------------------\n";
-	for (unsigned i = 0; i < pckt->len; i++) {
+	for (unsigned i = 0; i < this->packet.len; i++) {
 		if (i >= maxBytes) break;
 		if (i % 16 == 0) {
 			if (i != 0) {
@@ -163,10 +332,10 @@ void Packet::dump( const packet_t * pckt, unsigned offset, unsigned maxBytes )
 		}
 		else if (i % 2 == 0) cerr << " ";
 
-		fprintf(stderr, "%02x", pckt->data[i + offset]);
+		fprintf(stderr, "%02x", this->packet.data[i + offset]);
 	}
 	cerr << "\n-------------------------------------------------\n";
-	cerr << " off |    PACKET DUMP - " << pckt->len << " bytes\n";
+	cerr << " off |    PACKET DUMP - " << this->packet.len << " bytes\n";
 	cerr << "-------------------------------------------------\n";
 	#endif
 }
