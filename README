@@ -1,0 +1,58 @@
+## isamon(1)
+
+### NAME
+ismaon - Network monitoring tool
+
+### SYNOPSIS
+
+**isamon** -n NET_ADDR/NET_MASK [-h] [-p PORT]  [-i NIC] [-t] [-u] [-w MS] 
+
+### DESCRIPTION
+
+A complex tool for network scanning, it is somewhat similar to nmap
+
+### OPTIONS - MANDATORY
+
+#### -n NET_ADDR/NET_MASK, --network NET_ADDR/NET_MASK
+
+### OPTIONS - OPTIONAL
+
+#### -h, --help
+Prints out help message with usage options
+
+#### -t
+scans local network with arp or remote network with icmp and tryes to resolve open tcp ports on addresses that responded
+
+#### -u
+scans local network with arp or remote network with icmp and tryes to resolve open udp ports on addresses that responded
+
+#### -p PORT
+unless -p is specified, isamon will iterate through all ports, if it is specified, it will only scan this one port
+
+#### -i NIC, --interface NIC
+unless -i is specified, isamon will go over all availeable interfaces, if it is specified, it will only scan this one interface
+
+#### -w MS, --wait MS
+by setting -w you will override default timeout in milliseconds for arp, icmp, tcp and udp responses.
+
+### RETURN CODES
+return 0 on success, otherwise returns 1
+
+### EXAMPLE 1
+isamon -n 10.0.2.0/24
+
+will scan all ip addresses between 10.0.2.0 and 10.0.2.255
+
+### EXAMPLE 2
+isamon -n 10.0.2.0./24 -t -u -p 22
+isamon will try to find hosts and will try to connect to port 22
+
+### EXAMPLE 3
+isamon -n 10.0.2.0./24 -i eth0
+isamon will scan all addresses on eth0 that are between 10.0.2.0 and 10.0.2.255
+
+### BUGS
+randomly does segmentation fault/double free, have not yet been able to find this bug
+
+### AUTHOR
+2017 Radek Mojžíš

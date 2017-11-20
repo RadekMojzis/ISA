@@ -26,38 +26,17 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
-CXX         = g++
-CXXFLAGS    = -std=gnu++11 -Wall -Wextra -pedantic -Werror -O2 #-DNDEBUG
-
 .PHONY : all
 .PHONY : clean
 
+all: manual
 
-all : isamon
-	@mv isamon ../
+manual:	manual.tex
+	pdflatex --jobname=$@ $^
+	bibtex manual
+	pdflatex --jobname=$@ $^
+	pdflatex --jobname=$@ $^
+	mv manual.pdf ../
 
-isamon : main.cpp global.o isamon.o scanner.o sniffer.o packet.o lock.o
-	$(CXX) $(CXXFLAGS) -o $@ $^ -pthread
-
-global.o : global.cpp
-	$(CXX) $(CXXFLAGS) -c $^
-
-target.o: isamon.cppp
-	$(CXX) $(CXXFLAGS) -c $^
-
-scanner.o: scanner.cpp
-	$(CXX) $(CXXFLAGS) -c $^
-
-sniffer.o: sniffer.cpp
-	$(CXX) $(CXXFLAGS) -c $^
-
-packet.o: packet.cpp
-	$(CXX) $(CXXFLAGS) -c $^
-
-lock.o: lock.cpp
-	$(CXX) $(CXXFLAGS) -c $^
-
-clean :
-	@rm -f *.o
-	@rm -f ../isamon
+clean:
+	@rm -f *.log *.out *.toc *.aux *.dvi *.blg *.bbl
